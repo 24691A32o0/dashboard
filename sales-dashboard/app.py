@@ -8,6 +8,7 @@ Run locally:
 """
 
 import io
+import os
 from datetime import datetime
 
 import numpy as np
@@ -25,12 +26,43 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-DEFAULT_DATA_PATH = "data/sales_data.csv"
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_DATA_PATH = os.path.join(APP_DIR, "data", "sales_data.csv")
 
 
 # --------------------------------------------------------------------------
 # Data loading
 # --------------------------------------------------------------------------
+@st.cache_data
+def generate_sample_data(n_rows: int = 500, seed: int = 42) -> pd.DataFrame:
+    """Fallback synthetic dataset, used only if the bundled CSV is missing."""
+    rng = np.random.default_rng(seed)
+    products = ["Widget A", "Widget B", "Gadget X", "Gadget Y", "Gizmo Z"]
+    categories = {"Widget A": "Widgets", "Widget B": "Widgets",
+                  "Gadget X": "Gadgets", "Gadget Y": "Gadgets", "Gizmo Z": "Gizmos"}
+    regions = ["North", "South", "East", "West"]
+
+    dates = pd.date_range("2024-01-01", "2024-12-31", periods=n_rows)
+    product_choices = rng.choice(products, size=n_rows)
+    quantity = rng.integers(1, 20, size=n_rows)
+    unit_price = rng.uniform(10, 200, size=n_rows).round(2)
+    sales = quantity * unit_price
+    profit = (sales * rng.uniform(0.05, 0.35, size=n_rows)).round(2)
+
+    df = pd.DataFrame({
+        "Order_ID": [f"ORD-{i:05d}" for i in range(n_rows)],
+        "Date": dates,
+        "Product": product_choices,
+        "Category": [categories[p] for p in product_choices],
+        "Region": rng.choice(regions, size=n_rows),
+        "Quantity": quantity,
+        "Unit_Price": unit_price,
+        "Sales": sales.round(2),
+        "Profit": profit,
+    })
+    return df
+
+
 @st.cache_data
 def load_data(path_or_buffer) -> pd.DataFrame:
     df = pd.read_csv(path_or_buffer)
@@ -67,9 +99,15 @@ uploaded_file = st.sidebar.file_uploader("Upload sales CSV", type=["csv"])
 if uploaded_file is not None:
     df = load_data(uploaded_file)
     st.sidebar.success(f"Loaded {uploaded_file.name}")
-else:
+elif os.path.exists(DEFAULT_DATA_PATH):
     df = load_data(DEFAULT_DATA_PATH)
     st.sidebar.info("Using bundled sample dataset")
+else:
+    df = generate_sample_data()
+    st.sidebar.warning(
+        "Bundled sample file not found at `data/sales_data.csv` — "
+        "showing generated placeholder data instead. Upload a CSV to use real data."
+    )
 
 required_cols = {"Date", "Product", "Category", "Region", "Sales"}
 missing = required_cols - set(df.columns)
